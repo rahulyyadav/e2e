@@ -253,6 +253,9 @@ function positioned(locator: PwLocator, index: 'first' | 'last' | number): PwLoc
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
   'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
 
+const UNION_BRANCH_MESSAGE =
+  'locator unions cannot contain display-value queries, exact labels, or nested frames in this engine';
+
 /**
  * Projects a complete immutable expression onto a Playwright locator within
  * one scope. Frame cardinality is validated separately by the surface.
@@ -334,24 +337,16 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       const left = project(scope, expression.left, testIdAttribute);
       const right = project(scope, expression.right, testIdAttribute);
       // A branch whose matches are settled by the surface's after-the-fact
-      // predicate (display value, exact label) or post-steps, or that reaches
-      // a nested frame, cannot live inside one Playwright chain: reject it at
-      // projection time, before any round trip.
+      // predicate (display value, exact label) cannot live inside one
+      // Playwright chain. A branch that reaches a nested frame is refused by
+      // `rejectFramedUnion`, before the surface validates any frame.
       if (
-        frameSelectors(expression.left).length > 0 ||
-        frameSelectors(expression.right).length > 0 ||
         left.displayValue !== null ||
         right.displayValue !== null ||
         left.name !== null ||
-        right.name !== null ||
-        left.steps.length > 0 ||
-        right.steps.length > 0
+        right.name !== null
       ) {
-        throw new EngineError(
-          'UNSUPPORTED_CAPABILITY',
-          'locator unions cannot contain display-value queries, exact labels, or nested frames in this engine',
-          { retryable: false },
-        );
+        throw new EngineError('UNSUPPORTED_CAPABILITY', UNION_BRANCH_MESSAGE, { retryable: false });
       }
       return {
         locator: left.locator.or(right.locator),
@@ -444,5 +439,39 @@ export function frameSelectors(expression: LocatorExpression): string[] {
       return [...frameSelectors(expression.left), ...frameSelectors(expression.right)];
     case 'frame':
       return [expression.selector, ...frameSelectors(expression.source)];
+  }
+}
+
+/**
+ * Throws `UNSUPPORTED_CAPABILITY` when an `or` in the expression has a
+ * branch that reaches a nested frame. The surface runs this before it
+ * validates frames: frame validation walks an `or` as one descending chain,
+ * and sibling branches under one flat list of selectors report
+ * `FRAME_NOT_FOUND` for a union the engine refuses outright.
+ */
+export function rejectFramedUnion(expression: LocatorExpression): void {
+  switch (expression.kind) {
+    case 'query':
+      if (expression.scope !== undefined) rejectFramedUnion(expression.scope);
+      return;
+    case 'filter':
+      rejectFramedUnion(expression.source);
+      if (expression.has !== undefined) rejectFramedUnion(expression.has);
+      return;
+    case 'index':
+      rejectFramedUnion(expression.source);
+      return;
+    case 'selector':
+      return;
+    case 'or':
+      if (frameSelectors(expression.left).length > 0 || frameSelectors(expression.right).length > 0) {
+        throw new EngineError('UNSUPPORTED_CAPABILITY', UNION_BRANCH_MESSAGE, { retryable: false });
+      }
+      rejectFramedUnion(expression.left);
+      rejectFramedUnion(expression.right);
+      return;
+    case 'frame':
+      rejectFramedUnion(expression.source);
+      return;
   }
 }

@@ -44,7 +44,7 @@ import type { CdpEndpointResolver } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
-import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
+import { applyPostSteps, frameSelectors, projectExpression, rejectFramedUnion } from './locators.ts';
 import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
@@ -684,6 +684,7 @@ export class PlaywrightSurface {
         const token = session.token();
         const refs = session.refs;
         const page = this.requirePage();
+        rejectFramedUnion(expression);
         await this.validateFrames(expression);
         const projected = projectExpression(page, expression, this.testIdAttribute);
         const { displayValue, name, steps } = projected;

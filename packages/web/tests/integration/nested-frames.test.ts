@@ -83,6 +83,16 @@ describe('nested frame locators', () => {
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
+  // Before the tap test: that tap renames the inner button, and a union of it
+  // with itself has to find it under its original name.
+  it('locates a union inside one frame', async () => {
+    const matches = await engine.locate!(
+      withinFrames(['#outer', '#inner'], { kind: 'or', left: INNER_BUTTON, right: buttonNamed('Inner button') }),
+      operation,
+    );
+    expect(matches.map((node) => node.name)).toEqual(['Inner button']);
+  });
+
   it('resolves a two-level chain and taps inside the innermost frame', async () => {
     const matches = await engine.locate!(withinFrames(['#outer', '#inner'], INNER_BUTTON), operation);
     expect(matches.map((node) => node.name)).toEqual(['Inner button']);
@@ -114,5 +124,19 @@ describe('nested frame locators', () => {
       message: '2 frames match .twin',
       retryable: false,
     });
+  });
+
+  it('refuses a framed union before validating frames, even when every frame exists', async () => {
+    const union: LocatorExpression = {
+      kind: 'or',
+      left: { kind: 'frame', selector: '#outer', source: INNER_BUTTON },
+      right: { kind: 'frame', selector: '#outer', source: { kind: 'frame', selector: '#inner', source: DEEP_BUTTON } },
+    };
+    const startedAt = Date.now();
+    await expect(engine.locate!(union, operation)).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      retryable: false,
+    });
+    expect(Date.now() - startedAt, 'a framed union must not poll to its deadline').toBeLessThan(1_000);
   });
 });

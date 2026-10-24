@@ -7,7 +7,13 @@
 import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, TextPattern } from 'e2e/engine';
-import { applyPostSteps, frameSelectors, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
+import {
+  applyPostSteps,
+  frameSelectors,
+  projectExpression as projectWith,
+  rejectFramedUnion,
+  type PostStep,
+} from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */
 interface FakeLocator {
@@ -270,31 +276,22 @@ describe('projectExpression', () => {
     expect(projected.visible).toBe(false);
   });
 
-  it('rejects a union branch the engine settles after the read or outside one frame', () => {
+  it('rejects a union branch the engine settles after the read', () => {
     const message = 'locator unions cannot contain display-value queries, exact labels, or nested frames in this engine';
     const label: LocatorExpression = {
       kind: 'query',
       query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true } },
     };
-    const framed: LocatorExpression = { kind: 'frame', selector: 'iframe[name="a"]', source: textbox };
     const stepped: LocatorExpression = { kind: 'index', source: shared, index: 'first' };
     const reject = (branch: LocatorExpression, where: 'left' | 'right'): void => {
       expect(() =>
         projectExpression(page, { kind: 'or', left: where === 'left' ? branch : textbox, right: where === 'left' ? textbox : branch }),
       ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message, retryable: false }));
     };
-    for (const branch of [shared, label, framed, stepped]) {
+    for (const branch of [shared, label, stepped]) {
       reject(branch, 'left');
       reject(branch, 'right');
     }
-    // A frame reached through a branch's scope counts as a frame branch too.
-    expect(() =>
-      projectExpression(page, {
-        kind: 'or',
-        left: { ...textbox, scope: framed } as LocatorExpression,
-        right: textbox,
-      }),
-    ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }));
   });
 
   it('lists no frame selectors for an accepted union, and a frame may wrap a union', () => {
@@ -332,6 +329,54 @@ describe('projectExpression', () => {
     ]);
     const rows = projectExpression(page, { kind: 'filter', source: textbox, has: union });
     expect(chainOf(rows.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${UNION.join('>')})`]);
+  });
+});
+
+describe('rejectFramedUnion', () => {
+  const message = 'locator unions cannot contain display-value queries, exact labels, or nested frames in this engine';
+  const framed: LocatorExpression = { kind: 'frame', selector: 'iframe[name="a"]', source: textbox };
+
+  const refuse = (expression: LocatorExpression): void => {
+    expect(() => rejectFramedUnion(expression)).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message, retryable: false }),
+    );
+  };
+
+  it('refuses an or whose branch reaches a frame, either side, in any arm', () => {
+    refuse({ kind: 'or', left: framed, right: textbox });
+    refuse({ kind: 'or', left: textbox, right: framed });
+    // A frame reached through a branch's scope or index chain is a frame branch too.
+    refuse({ kind: 'or', left: { ...textbox, scope: framed } as LocatorExpression, right: textbox });
+    refuse({ kind: 'or', left: { kind: 'index', source: framed, index: 0 }, right: textbox });
+    // A union carried in a scope, index, has, or frame arm meets the same refusal.
+    refuse({ ...textbox, scope: { kind: 'or', left: framed, right: textbox } } as LocatorExpression);
+    refuse({ kind: 'index', source: { kind: 'or', left: framed, right: textbox }, index: 0 });
+    refuse({ kind: 'filter', source: textbox, has: { kind: 'or', left: framed, right: textbox } });
+    refuse({ kind: 'frame', selector: 'iframe[name="z"]', source: { kind: 'or', left: textbox, right: framed } });
+  });
+
+  it('refuses a framed union nested in another union branch', () => {
+    refuse({ kind: 'or', left: textbox, right: { kind: 'or', left: textbox, right: framed } });
+  });
+
+  it('accepts a frame wrapping a frame-free union', () => {
+    expect(() =>
+      rejectFramedUnion({
+        kind: 'frame',
+        selector: 'iframe[name="a"]',
+        source: { kind: 'or', left: textbox, right: { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('leaves framed-union projection to the pre-pass', () => {
+    const projected = projectExpression(page, { kind: 'or', left: framed, right: textbox });
+    expect(chainOf(projected.locator)).toEqual([
+      'frame(iframe[name="a"])',
+      ROOTS,
+      'role(textbox)',
+      `or(${ROOTS}>role(textbox))`,
+    ]);
   });
 });
 

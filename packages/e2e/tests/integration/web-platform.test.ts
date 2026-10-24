@@ -72,6 +72,11 @@ test('a union branch the engine cannot settle in one chain is refused', async ({
   await screen.getByText('Item Alpha').or(screen.getByDisplayValue('hello-value')).tap();
 });
 
+test('a union with a framed branch is refused at once', async ({ app, browser }) => {
+  await app.open('/frame');
+  await browser.frameLocator('#child').getByRole('button').or(browser.frameLocator('#child').getByRole('heading')).tap({ timeout: 4_000 });
+});
+
 test('class assertions report the observed class on failure', async ({ app, browser }) => {
   await app.open();
   try {
@@ -508,6 +513,16 @@ describe('web platform integration', () => {
     const result = resultByTitle(outcome, 'a union branch the engine cannot settle in one chain is refused');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('UNSUPPORTED_CAPABILITY');
+  });
+
+  it('fails a union with a framed branch with UNSUPPORTED_CAPABILITY, never a frame poll', () => {
+    const result = resultByTitle(outcome, 'a union with a framed branch is refused at once');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts[0]!;
+    expect(attempt.error?.code).toBe('UNSUPPORTED_CAPABILITY');
+    expect(attempt.error?.message).toContain('locator unions cannot contain');
+    const tap = attempt.steps.find((step) => step.api === 'locator.tap');
+    expect(tap?.durationMs, 'a framed union must not poll to its deadline').toBeLessThan(2_000);
   });
 
   it('fails a download that never started with the wait and the trigger time, not a bare timeout', () => {
