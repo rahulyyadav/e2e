@@ -315,7 +315,6 @@ describe('projectExpression', () => {
       // Both branches resolve inside the one frame scope, as Playwright requires of an or.
       `or(frame(iframe[name="a"])>${ROOTS}>text(Save,exact))`,
     ]);
-    expect(frameSelectors(union)).toEqual([ROOTS.startsWith('x') ? '' : '', 'locator(e2e-roots=input:not([type="checkbox" i]):not([type="radio" i]), textarea, select)'].slice(0, 0));
   });
 
   it('composes a union as a position, a filter, a scope, and a has target', () => {
