@@ -18,7 +18,7 @@ import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
 import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
-import { roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
+import { orExpression, roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 import { useFakeTime } from '../helpers/fake-time.ts';
 
@@ -208,6 +208,32 @@ describe('LocatorEngine resolve retry contract', () => {
     await expect(
       engine.resolveExactlyOne(EXPRESSION, new Deadline(350)),
     ).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(calls.resolve).toBeGreaterThan(1);
+  });
+
+  it('fails an action on a two-match union with LOCATOR_AMBIGUOUS at once', async () => {
+    const union = orExpression(roleQuery('tab', { name: 'Discover' }, undefined), roleQuery('tab', { name: 'Odkrywaj' }, undefined));
+    const { engine, calls } = makeEngine({
+      resolve: [() => [REF, { id: 'node-2', revision: 'rev-1' }]],
+    });
+    const started = Date.now();
+    await expect(engine.perform(union, { kind: 'tap' })).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+      message: expect.stringContaining('getByRole("tab", name: "Discover").or(getByRole("tab", name: "Odkrywaj"))'),
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(calls.resolve).toBe(1);
+  });
+
+  it('polls a zero-match union and reports LOCATOR_NOT_FOUND with the rendered or', async () => {
+    const union = orExpression(testIdQuery('discover-tab', undefined, undefined), roleQuery('tab', { name: 'Odkrywaj' }, undefined));
+    const { engine, calls } = makeEngine({
+      resolve: Array.from({ length: 50 }, () => () => [] as readonly NodeRef[]),
+    });
+    await expect(engine.resolveExactlyOne(union, new Deadline(350))).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: expect.stringContaining('.or('),
+    });
     expect(calls.resolve).toBeGreaterThan(1);
   });
 });

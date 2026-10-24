@@ -108,4 +108,36 @@ describe('locator expressions over a device snapshot', () => {
       expect.objectContaining({ code: 'FRAME_NOT_FOUND' }),
     );
   });
+
+  it('unions both branches in one snapshot, deduplicated and in document order', () => {
+    // Interleaved matches: neither branch's order wins, and reversing the arms changes nothing.
+    expect(names({ kind: 'or', left: query('role', 'button'), right: query('role', 'switch') })).toEqual(['Back', 'Airplane Mode']);
+    expect(names({ kind: 'or', left: query('role', 'switch'), right: query('role', 'button') })).toEqual(['Back', 'Airplane Mode']);
+    // A node both branches match counts once, whatever the branch kinds.
+    expect(names({ kind: 'or', left: query('text', 'About'), right: query('label', 'About') })).toEqual(['About']);
+    expect(names({ kind: 'or', left: query('role', 'listitem'), right: query('role', 'listitem') })).toEqual(['About', 'Scroller']);
+    // visible narrows per branch: the plain arm keeps what the visible arm drops.
+    expect(names({ kind: 'or', left: query('text', 'Hidden', { visible: true }), right: query('text', 'Hidden') })).toEqual(['Hidden']);
+    expect(names({ kind: 'or', left: query('text', 'Hidden', { visible: true }), right: query('label', 'Search', { visible: true }) })).toEqual([
+      'Search',
+    ]);
+    // A union composes under positions and filters, and a filter's has arm may be one.
+    expect(names({ kind: 'index', source: { kind: 'or', left: query('role', 'button'), right: query('role', 'switch') }, index: 1 })).toEqual([
+      'Airplane Mode',
+    ]);
+    expect(names({ kind: 'filter', source: { kind: 'or', left: query('role', 'listitem'), right: query('role', 'switch') }, hasText: exact('About') })).toEqual([
+      'About',
+    ]);
+    expect(
+      names({
+        kind: 'filter',
+        source: query('role', 'listitem'),
+        has: { kind: 'or', left: query('role', 'text'), right: query('role', 'link') },
+      }),
+    ).toEqual(['About']);
+    // A frame branch throws exactly like a direct frame query.
+    expect(() =>
+      names({ kind: 'or', left: query('role', 'button'), right: { kind: 'frame', selector: 'iframe', source: query('role', 'button') } }),
+    ).toThrowError(expect.objectContaining({ code: 'FRAME_NOT_FOUND' }));
+  });
 });

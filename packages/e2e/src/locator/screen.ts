@@ -39,6 +39,7 @@ import {
   describeExpression,
   filterExpression,
   indexExpression,
+  orExpression,
   roleQuery,
   testIdQuery,
   textQuery,
@@ -625,6 +626,12 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   nth(index: number): Locator {
     return new LocatorImpl(this.context, indexExpression(this.expression, index));
+  }
+
+  /** Returns a locator matching the nodes either locator matches, as Playwright's locator.or does. Actions, reads, and single-node assertions on it still require exactly one match. */
+  or(other: Locator): Locator {
+    const internals = this.ownLocator(other, 'or');
+    return new LocatorImpl(this.context, orExpression(this.expression, internals.expression));
   }
 
   private async readGuarded(guardSecure = true): Promise<SemanticNode> {

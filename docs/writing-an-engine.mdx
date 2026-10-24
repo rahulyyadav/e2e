@@ -99,6 +99,10 @@ targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }), app: { b
 engine behavior changes. With `perform`, also declare `actions` to list the
 supported action kinds. `locate` answers `screen` queries; the exported
 `resolveExpression` applies the standard query rules to a semantic tree.
+An engine interprets every `LocatorExpression` kind, `or` included: it
+matches the nodes either sub-expression matches, each node once, in document
+order, inside one locate. A kind an engine cannot honor throws
+`UNSUPPORTED_CAPABILITY`.
 The app under test is the target's `app`, not an engine option:
 `validateApp` checks it at config load, and `prepare` and `init` receive it
 as `info.app`. `session` provides methods to open or

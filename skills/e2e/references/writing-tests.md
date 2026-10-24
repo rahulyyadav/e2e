@@ -167,6 +167,9 @@ substring; a `RegExp` matches as written.
   query), `filter({ has: locator })`, `first()`, `last()`, `nth(i)`, or
   scoping under another locator. Any other `filter` key (`hasNot`,
   `hasNotText`) or an empty `filter({})` is `INVALID_LOCATOR`.
+- Union locale or platform alternatives with `locator.or(other)`; the union
+  reports both branches in failures, unlike `expect.poll`. Actions on it
+  still need exactly one match.
 - `visible: true` drops nodes the page hides (a closed drawer) before the
   exactly-one rule. Visibility is what renders, as `toBeVisible()` reads it:
   an `aria-hidden` spinner that paints is visible, so `toBeHidden()` waits

@@ -971,7 +971,7 @@ Use these helpers to keep behavior consistent across engines:
 | Export | Use |
 | --- | --- |
 | `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers; `toTextPattern` throws `INVALID_ARGUMENT` for a `match` that is neither a string nor a `RegExp` |
-| `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
+| `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. `or` unions both branches, keeping each node once in document order. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
 | `urlMatches(current, expected, baseHref, ignoreCase?)` | `toHaveURL`-style comparison, `ignoreCase` as on the locator matchers; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT`, as in `toTextPattern` |
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window. An `OPERATION_TIMEOUT` from an `evaluate` that started with under 100 ms of the deadline left, after one that completed, ends the poll: `onTimeout(cause)` builds the failure with it, and a negation passes if it had held long enough by the time that read was cut off. Bound each read `evaluate` makes by `deadline` (`context.operation(deadline.remaining())`): one on the action timeout can outlast the assertion's own |
 | `validateJsonValue(value, label, rules?)` | Checks a value is plain JSON: a top-level `undefined` passes; a non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside is `INVALID_ARGUMENT` naming `label`. A `Secret` is `POLICY_DENIED` unless `rules.onSecret` throws its own; `rules.maxDepth` caps the nesting |
@@ -1283,7 +1283,8 @@ runner redacts the leading part of a secret that a field exactly at its limit
 ends with, which a whole-value match cannot see. Single-node reads are
 unbounded and always carry the full value. The `selector` expression kind carries a
 platform-native selector string; `frame` scopes a query into a nested
-document.
+document; `or` matches the nodes either sub-expression matches, deduplicated
+and in document order, resolved inside one locate.
 
 ```ts
 /** One node of an observation tree. */
@@ -1372,4 +1373,4 @@ A `SemanticQuery` with `visible: true` must match only nodes whose
 `states.hidden` is false, by the same predicate the engine reports on
 `SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()`
 never disagree. Apply it wherever the query sits in the expression, under a
-scope, filter, or index too.
+scope, filter, index, or union branch too.

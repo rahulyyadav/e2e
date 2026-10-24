@@ -532,6 +532,8 @@ export interface Locator extends Screen {
   last(): Locator;
   /** Selects one zero-based current match. */
   nth(index: number): Locator;
+  /** Unions two locators: the new locator matches the nodes either one matches, each node once. Actions and reads still require exactly one match. */
+  or(other: Locator): Locator;
 }
 
 export interface App {

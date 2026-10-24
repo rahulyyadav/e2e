@@ -40,7 +40,8 @@ export interface ResolveExpressionOptions {
  * one field. `visible` drops hidden nodes from any kind. `scope` searches
  * strict descendants of the scope's matches; `filter` keeps a match whose
  * own or descendants' name, text, or value matches `hasText`, and whose
- * descendants answer `has`; `index` picks `first`, `last`, or a position.
+ * descendants answer `has`; `index` picks `first`, `last`, or a position;
+ * `or` unions both branches, each node once, in document order.
  * `frame` is `FRAME_NOT_FOUND`: a semantic tree has no nested documents.
  */
 export function resolveExpression(
@@ -104,6 +105,13 @@ function resolve(
         expression.index === 'first' ? 0 : expression.index === 'last' ? source.length - 1 : expression.index;
       const picked = source[position];
       return picked === undefined ? [] : [picked];
+    }
+    case 'or': {
+      const matched = new Set([
+        ...resolve(expression.left, candidates, tree, options),
+        ...resolve(expression.right, candidates, tree, options),
+      ]);
+      return tree.all.filter((node) => matched.has(node));
     }
     case 'selector': {
       if (options.selector === undefined) {

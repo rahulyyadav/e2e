@@ -268,6 +268,13 @@ void asyncExpectation.toContainText(['a', /b/]);
 void asyncExpectation.toHaveText(['a', 1]);
 // @ts-expect-error only toHaveText and toContainText take a list; a value is one string
 void asyncExpectation.toHaveValue(['a']);
+// Playwright parity: or unions two locators and stays a Locator.
+void (screen.getByRole('tab', 'Discover').or(screen.getByRole('tab', 'Odkrywaj')) satisfies Locator);
+void (screen.getByRole('tablist').getByRole('tab', 'One').or(screen.getByTestId('tab-two')).first() satisfies Locator);
+// @ts-expect-error or takes a locator, not a query value
+screen.getByRole('button').or('Save');
+// @ts-expect-error a bare screen has no or; only locators carry it
+screen.or(screen.getByRole('button'));
 void screen.getByRole('button').waitFor({ state: 'attached' });
 void screen.getByRole('button').waitFor({ state: 'detached', timeout: 1000 });
 // @ts-expect-error waitFor takes Playwright's four states

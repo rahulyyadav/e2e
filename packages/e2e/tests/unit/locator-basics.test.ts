@@ -263,3 +263,28 @@ describe('getByRole with a name', () => {
     );
   });
 });
+
+describe('locator.or unions', () => {
+  it('counts the deduped union with toHaveCount', async () => {
+    const screen = createScreenFixture(ITEMS);
+    // Two disjoint branches count twice; an arm the other subsumes adds nothing.
+    await expectFixture(screen.getByText('Item Alpha').or(screen.getByText('Item Beta'))).toHaveCount(2);
+    await expectFixture(screen.getByText('Item Alpha').or(screen.getByRole('listitem'))).toHaveCount(3);
+  });
+
+  it('rejects expect(union) toBeVisible at once when two match', async () => {
+    const screen = createScreenFixture(ITEMS);
+    const union = screen.getByText('Item Alpha').or(screen.getByText('Item Beta'));
+    const started = Date.now();
+    await expect(expectFixture(union).toBeVisible()).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+      message: expect.stringContaining('.or('),
+    });
+    expect(Date.now() - started).toBeLessThan(SCREEN_FIXTURE_TIMEOUT_MS);
+  });
+
+  it('passes not.toBeVisible once the union holds hidden', async () => {
+    const screen = createScreenFixture([HIDDEN]);
+    await expectFixture(screen.getByText('Gone').or(screen.getByText('Hidden'))).not.toBeVisible();
+  });
+});

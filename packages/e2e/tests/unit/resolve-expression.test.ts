@@ -201,4 +201,69 @@ describe('resolveExpression', () => {
       expect.objectContaining({ code: 'FRAME_NOT_FOUND', retryable: false }),
     );
   });
+
+  it('unions both branches in document order', () => {
+    // Buttons and list items interleave through the tree; neither branch's order wins.
+    expect(ids({ kind: 'or', left: query('role', 'button'), right: query('role', 'listitem') })).toEqual([
+      'back',
+      'about',
+      'scroller',
+    ]);
+    expect(ids({ kind: 'or', left: query('role', 'listitem'), right: query('role', 'button') })).toEqual([
+      'back',
+      'about',
+      'scroller',
+    ]);
+  });
+
+  it('counts a node matched by both branches once', () => {
+    expect(ids({ kind: 'or', left: query('text', 'About'), right: query('label', 'About') })).toEqual(['about-text']);
+    expect(ids({ kind: 'or', left: query('role', 'listitem'), right: query('role', 'listitem') })).toEqual([
+      'about',
+      'scroller',
+    ]);
+  });
+
+  it('keeps visible narrowing per branch', () => {
+    // A plain arm keeps the hidden node the visible arm drops, in either order.
+    expect(ids({ kind: 'or', left: query('text', 'Hidden', { visible: true }), right: query('text', 'Hidden') })).toEqual(['hidden']);
+    expect(ids({ kind: 'or', left: query('text', 'Hidden'), right: query('text', 'Hidden', { visible: true }) })).toEqual(['hidden']);
+    expect(
+      ids({ kind: 'or', left: query('text', 'Hidden', { visible: true }), right: query('text', 'Search', { visible: true }) }),
+    ).toEqual(['search']);
+  });
+
+  it('resolves an or under a scope and as a scope', () => {
+    // As a scope: the query searches the descendants of either container, so the
+    // union reaches a text node neither single-scope query would pair with the other.
+    const scopedToBoth: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: exact('text') },
+      scope: { kind: 'or', left: query('role', 'navigation'), right: query('role', 'listitem') },
+    };
+    expect(ids(scopedToBoth)).toEqual(['about-text']);
+    expect(ids({ kind: 'query', query: { kind: 'role', value: exact('text') }, scope: query('role', 'navigation') })).toEqual([]);
+    // Under a scope: each arm resolves against the whole tree before the union.
+    const scopedArms: LocatorExpression = {
+      kind: 'or',
+      left: { kind: 'query', query: { kind: 'label', value: exact('Back') }, scope: query('role', 'navigation') },
+      right: { kind: 'query', query: { kind: 'label', value: exact('About') }, scope: query('role', 'listitem') },
+    };
+    expect(ids(scopedArms)).toEqual(['back', 'about-text']);
+  });
+
+  it('unions inside filter and index positions', () => {
+    const union: LocatorExpression = { kind: 'or', left: query('role', 'listitem'), right: query('role', 'switch') };
+    expect(ids({ kind: 'index', source: union, index: 1 })).toEqual(['airplane']);
+    expect(ids({ kind: 'index', source: union, index: 'last' })).toEqual(['scroller']);
+    expect(ids({ kind: 'filter', source: union, hasText: exact('About') })).toEqual(['about']);
+    // A filter's has arm may itself be a union.
+    expect(
+      ids({
+        kind: 'filter',
+        source: query('role', 'listitem'),
+        has: { kind: 'or', left: query('role', 'text'), right: query('role', 'link') },
+      }),
+    ).toEqual(['about']);
+  });
 });

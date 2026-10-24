@@ -130,8 +130,19 @@ locator.
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
 it gets any other key, even beside them (`hasNot`, `hasNotText`, and
 `visible` are not filters here), when `has` is not a runner locator or was
-made by another target's screen, or when `nth` gets a negative or
+made by another target's screen, when `or` is given a non-locator or a
+locator made by another target's screen, or when `nth` gets a negative or
 non-integer index.
+
+`or(other)` unions two locators: the result matches the nodes either one
+matches, each node once, in document order. It is the escape hatch for a
+widget whose accessible name differs by locale or platform. An action,
+read, or single-node assertion on the union still requires exactly one
+match; two matches fail at once with `LOCATOR_AMBIGUOUS`.
+
+```ts
+await expect(screen.getByRole('tab', 'Discover').or(screen.getByRole('tab', 'Odkrywaj'))).toBeVisible();
+```
 
 ```ts
 const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
@@ -142,7 +153,9 @@ await row.getByRole('button', 'Void').tap();
 In the web engine a `getByDisplayValue` locator cannot be the scope
 of a child query or a `has` filter; both fail with `UNSUPPORTED_CAPABILITY`.
 Playwright has no selector for a control's current value, so the engine
-filters candidates after the fact.
+filters candidates after the fact. In the web engine a union cannot contain
+a `getByDisplayValue` branch, an exact-string `getByLabel` branch, or a
+branch that reaches a nested frame; all fail with `UNSUPPORTED_CAPABILITY`.
 </Note>
 
 ## screen.tapAt
@@ -316,6 +329,8 @@ export interface Locator extends Screen {
   last(): Locator;
   /** Selects one zero-based current match. */
   nth(index: number): Locator;
+  /** Unions two locators: the new locator matches the nodes either one matches, each node once. Actions and reads still require exactly one match. */
+  or(other: Locator): Locator;
 }
 ```
 

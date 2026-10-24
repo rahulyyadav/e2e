@@ -36,6 +36,13 @@ export function resolveExpression(expression: LocatorExpression, index: readonly
       const picked = source[position];
       return picked === undefined ? [] : [picked];
     }
+    case 'or': {
+      const matched = new Set([
+        ...resolveExpression(expression.left, index),
+        ...resolveExpression(expression.right, index),
+      ]);
+      return index.filter((entry) => matched.has(entry));
+    }
     case 'selector':
       return compileSelector(expression.selector)(index);
     case 'frame':

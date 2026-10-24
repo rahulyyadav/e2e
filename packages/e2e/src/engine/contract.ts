@@ -79,7 +79,8 @@ export interface SemanticQuery {
 /**
  * The location capability's query language. `selector` is a platform-native
  * selector string (CSS or XPath on a document platform, a predicate on a
- * device platform); `frame` scopes a query inside one nested document.
+ * device platform); `frame` scopes a query inside one nested document;
+ * `or` unions two expressions.
  */
 export type LocatorExpression =
   | {
@@ -106,6 +107,11 @@ export type LocatorExpression =
       readonly kind: 'frame';
       readonly selector: string;
       readonly source: LocatorExpression;
+    }
+  | {
+      readonly kind: 'or';
+      readonly left: LocatorExpression;
+      readonly right: LocatorExpression;
     };
 
 export interface NodeRef {

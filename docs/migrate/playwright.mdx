@@ -140,7 +140,8 @@ what to do today.
 | `locator.filter({ hasText, has })` | the same | same |
 | `filter({ hasNot, hasNotText })` | not yet; a positive filter or `nth`. `INVALID_LOCATOR`, alone or beside `hasText` or `has` | missing |
 | `first()`, `last()`, `nth(i)` | the same | same |
-| `locator.and(other)`, `locator.or(other)` | not yet | missing |
+| `locator.or(other)` | the same; web unions reject display-value, exact-label, and frame branches with `UNSUPPORTED_CAPABILITY` | web, mobile |
+| `locator.and(other)` | not yet | missing |
 | `locator.count()` | the same | same |
 | `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | same |
 | `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | web only |

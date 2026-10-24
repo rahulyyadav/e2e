@@ -54,6 +54,24 @@ test('deterministic queries and reads', async ({ app, screen, browser }) => {
   expect(await screen.getByTestId('items').getAttribute('__proto__')).toBeNull();
 });
 
+test('locator.or unions two locators in one page resolve', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByText('Item Alpha').or(screen.getByText('Item Beta'))).toHaveCount(2);
+  await expect(screen.getByText('Item Alpha').or(screen.getByText('Item Missing'))).toBeVisible();
+  // A node both branches match counts once.
+  expect(await screen.getByText('Item Alpha').or(screen.getByText('Item Alpha')).count()).toBe(1);
+});
+
+test('an action on a two-match union fails at once', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByText('Item Alpha').or(screen.getByText('Item Beta')).tap({ timeout: 4_000 });
+});
+
+test('a union branch the engine cannot settle in one chain is refused', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByText('Item Alpha').or(screen.getByDisplayValue('hello-value')).tap();
+});
+
 test('class assertions report the observed class on failure', async ({ app, browser }) => {
   await app.open();
   try {
@@ -440,6 +458,7 @@ describe('web platform integration', () => {
 
   it.each([
     'deterministic queries and reads',
+    'locator.or unions two locators in one page resolve',
     'class assertions report the observed class on failure',
     'a textarea value compares raw',
     'toHaveAttribute reads the value attribute of plain fields',
@@ -473,6 +492,22 @@ describe('web platform integration', () => {
     const tap = result.attempts[0]!.steps.find((step) => step.api === 'locator.tap');
     expect(tap?.status).toBe('failed');
     expect(tap?.durationMs).toBeGreaterThanOrEqual(800);
+  });
+
+  it('fails an action on a two-match union with LOCATOR_AMBIGUOUS at once, naming both branches', () => {
+    const result = resultByTitle(outcome, 'an action on a two-match union fails at once');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts[0]!;
+    expect(attempt.error?.code).toBe('LOCATOR_AMBIGUOUS');
+    expect(attempt.error?.message).toContain('.or(');
+    const tap = attempt.steps.find((step) => step.api === 'locator.tap');
+    expect(tap?.durationMs, 'a two-match union must not poll to its deadline').toBeLessThan(2_000);
+  });
+
+  it('refuses a web union with a display-value branch with UNSUPPORTED_CAPABILITY', () => {
+    const result = resultByTitle(outcome, 'a union branch the engine cannot settle in one chain is refused');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('UNSUPPORTED_CAPABILITY');
   });
 
   it('fails a download that never started with the wait and the trigger time, not a bare timeout', () => {

@@ -4,10 +4,13 @@ import {
   expressionHints,
   filterExpression,
   indexExpression,
+  orExpression,
   roleQuery,
   testIdQuery,
   textQuery,
 } from '../../src/locator/expression.ts';
+import { locatorInternals } from '../../src/locator/screen.ts';
+import { createScreenFixture } from '../helpers/screen-fixture.ts';
 
 describe('locator expressions', () => {
   it('builds role queries with name and states', () => {
@@ -109,5 +112,47 @@ describe('locator expressions', () => {
     expect(describeExpression(filterExpression(source, { hasText: 'Pro', has: inner }))).toBe(
       'getByRole("listitem").filter({ hasText: "Pro", has: getByRole("button", name: "Remove") })',
     );
+  });
+
+  it('unions two expressions with orExpression', () => {
+    const screen = createScreenFixture([]);
+    const left = screen.getByRole('tab', 'Discover');
+    const right = screen.getByTestId('tab-odkrywaj');
+    expect(locatorInternals(left.or(right))?.expression).toEqual({
+      kind: 'or',
+      left: locatorInternals(left)!.expression,
+      right: locatorInternals(right)!.expression,
+    });
+  });
+
+  it('rejects a non-locator and a foreign-screen locator in or', () => {
+    const screen = createScreenFixture([]);
+    expect(() => screen.getByRole('tab').or('Odkrywaj' as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'or requires an e2e locator' }),
+    );
+    const foreign = createScreenFixture([]).getByRole('tab');
+    expect(() => screen.getByRole('tab').or(foreign)).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_LOCATOR',
+        message: expect.stringContaining('or requires a locator made by this screen'),
+      }),
+    );
+  });
+
+  it('describeExpression renders an or union', () => {
+    const discover = roleQuery('tab', { name: 'Discover' }, undefined);
+    const odkrywaj = roleQuery('tab', { name: 'Odkrywaj' }, undefined);
+    expect(describeExpression(orExpression(discover, odkrywaj))).toBe(
+      'getByRole("tab", name: "Discover").or(getByRole("tab", name: "Odkrywaj"))',
+    );
+    // Nested forms: a pattern-named branch, and a union under an index.
+    expect(describeExpression(indexExpression(orExpression(odkrywaj, testIdQuery(/^tab-\d+$/, undefined, undefined)), 1))).toBe(
+      'getByRole("tab", name: "Odkrywaj").or(getByTestId(/^tab-\\d+$/)).nth(1)',
+    );
+  });
+
+  it('hints nothing for an or union', () => {
+    const union = orExpression(roleQuery('button', { name: 'Save' }, undefined), testIdQuery('card', undefined, undefined));
+    expect(expressionHints(union)).toEqual({});
   });
 });

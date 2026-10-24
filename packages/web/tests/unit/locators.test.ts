@@ -7,7 +7,7 @@
 import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, TextPattern } from 'e2e/engine';
-import { applyPostSteps, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
+import { applyPostSteps, frameSelectors, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */
 interface FakeLocator {
@@ -42,6 +42,8 @@ function fakeLocator(chain: readonly string[]): PwLocator {
     first: () => fakeLocator([...chain, 'first']),
     last: () => fakeLocator([...chain, 'last']),
     nth: (index: number) => fakeLocator([...chain, `nth(${String(index)})`]),
+    or: (other: PwLocator) => fakeLocator([...chain, `or(${chainOf(other).join('>')})`]),
+    frameLocator: (selector: string) => fakeLocator([...chain, `frame(${selector})`]),
   };
   return self as unknown as PwLocator;
 }
@@ -248,6 +250,89 @@ describe('projectExpression', () => {
         has: shared,
       }),
     ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY' }));
+  });
+
+  it('projects an or union onto the native Playwright locator.or, settled entirely in the chain', () => {
+    const union: LocatorExpression = {
+      kind: 'or',
+      left: textbox,
+      right: { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } },
+    };
+    const UNION = [ROOTS, 'role(textbox)', `or(${ROOTS}>text(Save,exact))`];
+    const projected = projectExpression(page, union);
+    expect(chainOf(projected.locator)).toEqual(UNION);
+    // Nothing survives outside the chain: no predicate, no steps, and the top-level
+    // visible drop does not fire, since each branch narrowed (or not) on its own.
+    expect(projected.displayValue).toBeNull();
+    expect(projected.name).toBeNull();
+    expect(projected.composable).toBeNull();
+    expect(projected.steps).toEqual([]);
+    expect(projected.visible).toBe(false);
+  });
+
+  it('rejects a union branch the engine settles after the read or outside one frame', () => {
+    const message = 'locator unions cannot contain display-value queries, exact labels, or nested frames in this engine';
+    const label: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true } },
+    };
+    const framed: LocatorExpression = { kind: 'frame', selector: 'iframe[name="a"]', source: textbox };
+    const stepped: LocatorExpression = { kind: 'index', source: shared, index: 'first' };
+    const reject = (branch: LocatorExpression, where: 'left' | 'right'): void => {
+      expect(() =>
+        projectExpression(page, { kind: 'or', left: where === 'left' ? branch : textbox, right: where === 'left' ? textbox : branch }),
+      ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message, retryable: false }));
+    };
+    for (const branch of [shared, label, framed, stepped]) {
+      reject(branch, 'left');
+      reject(branch, 'right');
+    }
+    // A frame reached through a branch's scope counts as a frame branch too.
+    expect(() =>
+      projectExpression(page, {
+        kind: 'or',
+        left: { ...textbox, scope: framed } as LocatorExpression,
+        right: textbox,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }));
+  });
+
+  it('lists no frame selectors for an accepted union, and a frame may wrap a union', () => {
+    const union: LocatorExpression = { kind: 'or', left: textbox, right: shared };
+    expect(frameSelectors(union)).toEqual([]);
+    expect(frameSelectors({ kind: 'or', left: textbox, right: { ...textbox, scope: textbox } })).toEqual([]);
+    // `frame(f) >> or(a, b)` projects the union inside the one frame scope.
+    const inFrame: LocatorExpression = {
+      kind: 'frame',
+      selector: 'iframe[name="a"]',
+      source: { kind: 'or', left: textbox, right: { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } } },
+    };
+    expect(frameSelectors(inFrame)).toEqual(['iframe[name="a"]']);
+    expect(chainOf(projectExpression(page, inFrame).locator)).toEqual([
+      'frame(iframe[name="a"])',
+      ROOTS,
+      'role(textbox)',
+      // Both branches resolve inside the one frame scope, as Playwright requires of an or.
+      `or(frame(iframe[name="a"])>${ROOTS}>text(Save,exact))`,
+    ]);
+    expect(frameSelectors(union)).toEqual([ROOTS.startsWith('x') ? '' : '', 'locator(e2e-roots=input:not([type="checkbox" i]):not([type="radio" i]), textarea, select)'].slice(0, 0));
+  });
+
+  it('composes a union as a position, a filter, a scope, and a has target', () => {
+    const union: LocatorExpression = { kind: 'or', left: textbox, right: { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } } };
+    const UNION = [ROOTS, 'role(textbox)', `or(${ROOTS}>text(Save,exact))`];
+    const first = projectExpression(page, { kind: 'index', source: union, index: 'first' });
+    expect(chainOf(first.locator)).toEqual([...UNION, 'first']);
+    expect(first.steps).toEqual([]);
+    const filtered = projectExpression(page, { kind: 'filter', source: union, hasText: { kind: 'string', value: 'x', exact: false } });
+    expect(chainOf(filtered.locator)).toEqual([...UNION, 'filter(hasText=x)']);
+    const scoped = projectExpression(page, { ...shared, scope: union });
+    expect(chainOf(scoped.locator)).toEqual([
+      ...UNION,
+      'locator(e2e-roots=input:not([type="checkbox" i]):not([type="radio" i]), textarea, select)',
+    ]);
+    const rows = projectExpression(page, { kind: 'filter', source: textbox, has: union });
+    expect(chainOf(rows.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${UNION.join('>')})`]);
   });
 });
 

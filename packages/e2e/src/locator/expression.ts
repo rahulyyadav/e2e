@@ -116,6 +116,11 @@ export function indexExpression(
   return { kind: 'index', source, index };
 }
 
+/** Builds the union expression for `locator.or(other)`. Both arms are evaluated together in one locate. */
+export function orExpression(left: LocatorExpression, right: LocatorExpression): LocatorExpression {
+  return { kind: 'or', left, right };
+}
+
 /**
  * What an expression asks for, as the facts a failure report keeps beside
  * the rendered locator: the role and name of a role query, the text a label,
@@ -139,6 +144,10 @@ export function expressionHints(expression: LocatorExpression): Pick<ErrorDetail
     case 'index':
     case 'frame':
       return expressionHints(expression.source);
+    case 'or':
+      // A union has one role/name/testId per branch; picking either arm's hint would misreport the other.
+      // The rendered locator names both branches instead.
+      return {};
     case 'selector':
       return {};
   }
@@ -177,6 +186,8 @@ export function describeExpression(expression: LocatorExpression): string {
       return typeof expression.index === 'number'
         ? `${describeExpression(expression.source)}.nth(${expression.index})`
         : `${describeExpression(expression.source)}.${expression.index}()`;
+    case 'or':
+      return `${describeExpression(expression.left)}.or(${describeExpression(expression.right)})`;
     case 'selector':
       return `locator(${JSON.stringify(expression.selector)})`;
     case 'frame':

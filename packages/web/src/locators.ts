@@ -330,6 +330,38 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
         visible: false,
       };
     }
+    case 'or': {
+      const left = project(scope, expression.left, testIdAttribute);
+      const right = project(scope, expression.right, testIdAttribute);
+      // A branch whose matches are settled by the surface's after-the-fact
+      // predicate (display value, exact label) or post-steps, or that reaches
+      // a nested frame, cannot live inside one Playwright chain: reject it at
+      // projection time, before any round trip.
+      if (
+        frameSelectors(expression.left).length > 0 ||
+        frameSelectors(expression.right).length > 0 ||
+        left.displayValue !== null ||
+        right.displayValue !== null ||
+        left.name !== null ||
+        right.name !== null ||
+        left.steps.length > 0 ||
+        right.steps.length > 0
+      ) {
+        throw new EngineError(
+          'UNSUPPORTED_CAPABILITY',
+          'locator unions cannot contain display-value queries, exact labels, or nested frames in this engine',
+          { retryable: false },
+        );
+      }
+      return {
+        locator: left.locator.or(right.locator),
+        displayValue: null,
+        name: null,
+        composable: null,
+        steps: [],
+        visible: false,
+      };
+    }
     case 'selector':
       return {
         locator: scope.locator(expression.selector),
@@ -408,6 +440,8 @@ export function frameSelectors(expression: LocatorExpression): string[] {
       return frameSelectors(expression.source);
     case 'selector':
       return [];
+    case 'or':
+      return [...frameSelectors(expression.left), ...frameSelectors(expression.right)];
     case 'frame':
       return [expression.selector, ...frameSelectors(expression.source)];
   }
