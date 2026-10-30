@@ -790,11 +790,11 @@ export class TargetExecutor implements SerialHost {
       this.appLogFiles.delete(session);
       if (appLogFile.close()) {
         const absolute = path.join(artifactSink.dir, APP_LOG_FILE);
-        const secrecy = sessionSecrecy(session, this.config.allSecrets);
-        if (!secrecy.ledger.isEmpty) {
+        const ledger = sessionLedger(session, this.config.allSecrets);
+        if (!ledger.isEmpty) {
           try {
             const text = readFileSync(absolute, 'utf8');
-            const redacted = secrecy.ledger.redactFragments(text);
+            const redacted = ledger.redactFragments(text);
             if (redacted !== text) writeFileSync(absolute, redacted);
           } catch {
             // The file cannot be verified redacted: never register bytes that
