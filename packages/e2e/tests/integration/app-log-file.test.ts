@@ -41,7 +41,7 @@ function appLogFiles(dir: string): { rel: string; text: string }[] {
     }
   };
   if (existsSync(base)) walk(base);
-  return found.sort((a, b) => a.rel.localeCompare(b.rel));
+  return found.toSorted((a, b) => a.rel.localeCompare(b.rel));
 }
 
 const info = (text: string): AppLogEntry => ({ source: 'console', level: 'info', text });
