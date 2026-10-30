@@ -877,8 +877,10 @@ export default defineConfig({
 
 The file is registered as a `log` artifact of the attempt (`redaction:
 'complete'`), so an `artifacts.store` receives it too. Past `maxBytes` (default
-20 MB) the file ends with a line saying it stopped and later entries are dropped;
-the whole-file redaction pass can lengthen a late-resolved value's marker a
+20 MB) the file ends with a line saying it stopped and later entries are dropped
+(a cap too small to also hold that stop line keeps the entries it fits and
+omits the marker). The whole-file redaction
+pass can lengthen a late-resolved value's marker a
 little past the ceiling, exactly as a redacted text download already does. An
 attempt that logs no entry gets no file. A test takes the same object
 as its own option, where `file: false` opts a noisy test out of a run that
