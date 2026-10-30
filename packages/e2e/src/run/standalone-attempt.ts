@@ -170,7 +170,12 @@ export async function launchAttempt(
     return { status: classifyAttemptStatus(error, step?.status === 'timed-out', error.code === 'CANCELLED'), error };
   };
   const video = attemptVideo(target.video, 0);
-  session = await executor.launchSession({ session: undefined, recordings: { trace: undefined, video } }, attemptId, artifacts.dir, attemptSignal);
+  session = await executor.launchSession(
+    { session: undefined, recordings: { trace: undefined, video }, ...(config.appLog.file ? { appLog: { maxBytes: config.appLog.maxBytes } } : {}) },
+    attemptId,
+    artifacts.dir,
+    attemptSignal,
+  );
   const opened = session;
   const closeOpened = (record: ClosingRecord): Promise<void> =>
     executor.closeSession(opened, { attemptId, video }, record, artifacts.sink, attemptErrors);
