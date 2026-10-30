@@ -7,6 +7,9 @@ import type { AppLogEntry } from '../engine/index.ts';
 /** The artifact's file name inside the attempt's directory. */
 export const APP_LOG_FILE = 'app-log.txt';
 
+/** Bytes held back under `maxBytes` so the stop line fits inside the ceiling. */
+const STOP_MARKER_RESERVE = 96;
+
 /** Streams one attempt's app-log entries to a file and reports whether the file holds anything worth registering. */
 export interface AppLogFileWriter {
   /**
@@ -43,6 +46,11 @@ export function createAppLogFile(options: {
   let written = 0;
   let entries = 0;
   let stopped = false;
+  // The stop line is part of the file, so bytes are reserved for it below the
+  // ceiling and the file never exceeds `maxBytes`. A ceiling too small to hold
+  // a marker records only entries and omits the marker.
+  const reserveMarker = options.maxBytes > STOP_MARKER_RESERVE;
+  const entryBudget = reserveMarker ? options.maxBytes - STOP_MARKER_RESERVE : options.maxBytes;
   return {
     write(entry, at) {
       if (fd === undefined || stopped) return;
@@ -50,16 +58,16 @@ export function createAppLogFile(options: {
       // survive a collapse matched only after redaction.
       const line = `${at} ${entry.level} ${entry.source} ${options.redact(entry.text).replace(/\s+/g, ' ').trim()}\n`;
       const bytes = Buffer.byteLength(line);
-      if (written + bytes > options.maxBytes) {
-        const stop = `[e2e] app log stopped at ${written} bytes of ${options.maxBytes} (appLog.maxBytes), ${entries} entries\n`;
-        try {
-          writeSync(fd, stop);
-        } catch {
-          stopped = true;
-          return;
-        }
-        written += Buffer.byteLength(stop);
+      if (written + bytes > entryBudget) {
         stopped = true;
+        if (reserveMarker) {
+          const stop = `[e2e] app log stopped at ${written} bytes of ${options.maxBytes} (appLog.maxBytes), ${entries} entries\n`;
+          try {
+            writeSync(fd, stop);
+          } catch {
+            // A stop line that cannot be written is not worth failing the attempt; the capture ends.
+          }
+        }
         return;
       }
       try {
@@ -74,12 +82,17 @@ export function createAppLogFile(options: {
     },
     close() {
       if (fd === undefined) return false;
+      let closed = true;
       try {
         closeSync(fd);
-      } finally {
-        fd = undefined;
+      } catch {
+        closed = false;
       }
-      if (entries === 0 && !stopped) {
+      fd = undefined;
+      // Register only a file that holds bytes and closed cleanly. A partial,
+      // empty, or uncloseable artifact is dropped quietly: it is never worth a
+      // `complete` claim, and it must never throw the attempt's close.
+      if (!closed || written === 0) {
         try {
           rmSync(file, { force: true });
         } catch {

@@ -59,29 +59,39 @@ describe('createAppLogFile', () => {
 
   it('appends one stop line once the byte cap is hit and drops later entries', () => {
     const dir = scratchDir();
-    // "2026-01-01T00:00:00.000Z info console aaa\n" is 42 bytes; a cap of 60
-    // takes the first line (42) and trips the stop on the second (would be 84).
-    const writer = createAppLogFile({ dir, maxBytes: 60, redact: noRedact });
+    // "2026-01-01T00:00:00.000Z info console aaa\n" is 42 bytes. A 140-byte cap
+    // reserves 96 for the marker, so the entry budget is 44: the first line fits
+    // (42), the second trips the stop, and the marker still fits under 140.
+    const writer = createAppLogFile({ dir, maxBytes: 140, redact: noRedact });
     writer.write(entry('info', 'console', 'aaa'), '2026-01-01T00:00:00.000Z');
-    writer.write(entry('info', 'console', 'bbb'), '2026-01-01T00:00:00.000Z'); // would exceed → stop line
+    writer.write(entry('info', 'console', 'bbb'), '2026-01-01T00:00:00.000Z'); // over the entry budget → stop
     writer.write(entry('info', 'console', 'ccc'), '2026-01-01T00:00:00.000Z'); // after stop → dropped
-    writer.close();
+    expect(writer.close()).toBe(true);
     const file = readFileSync(path.join(dir, APP_LOG_FILE), 'utf8');
     const lines = file.split('\n').filter((l) => l !== '');
     expect(lines[0]).toBe('2026-01-01T00:00:00.000Z info console aaa');
-    expect(lines.at(-1)).toBe('[e2e] app log stopped at 42 bytes of 60 (appLog.maxBytes), 1 entries');
+    expect(lines.at(-1)).toBe('[e2e] app log stopped at 42 bytes of 140 (appLog.maxBytes), 1 entries');
     expect(lines).toHaveLength(2); // one entry + the stop line
   });
 
-  it('writes the stop line alone when even the first entry overflows the cap', () => {
+  it('keeps entries but omits the marker when the cap is too small to reserve one', () => {
     const dir = scratchDir();
-    const writer = createAppLogFile({ dir, maxBytes: 5, redact: noRedact });
-    writer.write(entry('info', 'console', 'too long'), '2026-01-01T00:00:00.000Z');
+    // A 50-byte cap is below the 96-byte marker reserve, so entries are written
+    // against the full cap and the stop marker is skipped rather than overflowing.
+    const writer = createAppLogFile({ dir, maxBytes: 50, redact: noRedact });
+    writer.write(entry('info', 'console', 'aaa'), '2026-01-01T00:00:00.000Z'); // 42 fits
+    writer.write(entry('info', 'console', 'bbb'), '2026-01-01T00:00:00.000Z'); // 84 > 50 → stop, no marker
     expect(writer.close()).toBe(true);
-    const file = readFileSync(path.join(dir, APP_LOG_FILE), 'utf8');
-    expect(file.split('\n').filter((l) => l !== '')).toEqual([
-      '[e2e] app log stopped at 0 bytes of 5 (appLog.maxBytes), 0 entries',
-    ]);
+    const lines = readFileSync(path.join(dir, APP_LOG_FILE), 'utf8').split('\n').filter((l) => l !== '');
+    expect(lines).toEqual(['2026-01-01T00:00:00.000Z info console aaa']);
+  });
+
+  it('records nothing when the cap cannot even hold one entry', () => {
+    const dir = scratchDir();
+    const writer = createAppLogFile({ dir, maxBytes: 10, redact: noRedact });
+    writer.write(entry('info', 'console', 'aaa'), '2026-01-01T00:00:00.000Z'); // 42 > 10 → stop, no marker, no entry
+    expect(writer.close()).toBe(false);
+    expect(existsSync(path.join(dir, APP_LOG_FILE))).toBe(false);
   });
 
   it('removes the file and reports nothing to register when no entry was written', () => {

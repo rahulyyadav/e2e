@@ -349,7 +349,7 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
  * run's value in place, exactly as an unchecked top-level option would.
  */
 function validateAppLogOption(appLog: object, label: string): void {
-  if (Array.isArray(appLog)) {
+  if (appLog === null || typeof appLog !== 'object' || Array.isArray(appLog)) {
     throw new CollectionError(`${label}: appLog must be an object: { file, maxBytes }`);
   }
   const unknown = unknownKeyMessage(`${label}: appLog`, appLog, ['file', 'maxBytes']);
